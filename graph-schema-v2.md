@@ -124,9 +124,9 @@ L0  Репозитории   Repo  Component
 
 | Метка | `key` | Свойства |
 |---|---|---|
-| `Meta` | `label:Symbol`, `rel:CALLS` | `kind` (`label`/`rel`), `name`, `description`, `key_format`, `properties[]`, `from[]`, `to[]`, `example_cypher` |
+| `Meta` | `label:Symbol`, `rel:CALLS`, `example:<n>` | `kind` (`label`/`rel`/`example`), `name`, `description`, `key_format`, `properties[]`, `from[]`, `to[]`, `implemented` (есть ли экстрактор), `cypher` (у примеров) |
 
-Содержимое `Meta` — это таблицы разделов 3 и 4, загруженные в граф. Tool `graph.schema()` возвращает их; агент не держит схему в промпте и не отстаёт от неё.
+Содержимое `Meta` — это таблицы разделов 3 и 4, загруженные в граф из `scripts/graphify/meta.py` при каждой индексации. `graph.py schema` печатает их; агент не держит схему в промпте и не отстаёт от неё, а по `implemented` видит, какие метки и рёбра в графе пока отсутствуют.
 
 ---
 
@@ -409,6 +409,29 @@ Constraints: `UNIQUE NODE <Label> PROPERTIES 1 key` для каждой метк
 **Фаза 1 — детерминированная.** Экстракторы 1–13 и 15. Без LLM и эмбеддингов. Уже закрывает: точный поиск по идентификаторам, полнотекст по именам и комментариям, весь импакт по коду и швам, тесты, ADR/issues по регулярным выражениям.
 
 **Фаза 2 — семантика.** Эмбеддинги `DocChunk`/`Symbol`/`HttpEndpoint`, `summary` символов, `Concept` и `ABOUT`, агент-резолвер `ALIAS_OF` для `Unresolved`. Нужно решить: модель эмбеддингов (мультиязычная; размерность фиксируется в индексе) и где считать (`summary` для 6 тыс. символов — разовая стоимость).
+
+### Состояние реализации
+
+| Шаг пайплайна | Статус | Где |
+|---|---|---|
+| 1 `repo` | готово | `scripts/graphify/extract_repo.py` — `Repo`, `Component`, не-Go `File` |
+| 2 `code-go` | готово | `crawler-go/internal/gocode` — `Package`, `File`, `Symbol`, `CONTAINS`, `IMPORTS`, `CALLS`, `IMPLEMENTS`, `REFERENCES`, `TESTS` |
+| 2 `code-ts` | нет | TS/Svelte-краулер на Node; без него репозитории без `go.mod` получают только L0 и OpenAPI |
+| 3 `openapi` | готово | `scripts/graphify/extract_openapi.py` — `HttpEndpoint`, `Schema`, `Field`, `ACCEPTS`, `RETURNS`, `HAS_FIELD`, `REFERENCES`; `SseEvent` — нет |
+| 4 `routes` (Go) | готово | `crawler-go/internal/routes` — chi и `http.ServeMux`; `UiRoute` для SvelteKit — нет |
+| 5 `dto` (Go) | готово | `scripts/graphify/extract_dto.py` — `SERIALIZES` с `missing_in_code`/`missing_in_spec`; `MIRRORS`, `USES_FIELD` — нет |
+| 6 `http-client` | нет | часть TS-краулера |
+| 7 `sql` | нет | |
+| 8 `markers` | нет | |
+| 9 `external` | нет | |
+| 10 `tests` (e2e) | нет | часть TS-краулера |
+| 11 `docs` | нет | |
+| 12 `issues` | нет | |
+| 13 `derive` | частично | `scripts/graphify/falkor.py` — `CALLS {via:'derived'}`, флаги `in_spec`/`in_code`; `REACHES` — нет |
+| 14 `embed` | нет | фаза 2 |
+| 15 `meta` | готово | `scripts/graphify/meta.py`; `implemented` у каждой метки и типа ребра |
+
+Инструменты агента (раздел 9) и скиллы `/graphify`, `/impact` — готовы. Что не извлекается, скилл `/impact` велит проверять чтением кода и помечать как непокрытое графом.
 
 **Что не извлекается и помечается как непокрытое:**
 
