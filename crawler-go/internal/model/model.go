@@ -171,7 +171,7 @@ func (s Source) Props(path string, line int, extra map[string]any) map[string]an
 var pathParamRe = regexp.MustCompile(`\$\{[^}]*\}|\{[^}]*\}|:[A-Za-z_][A-Za-z0-9_]*|\*+`)
 
 // NormalizePath replaces every path parameter with {} so chi ({id}), OpenAPI
-// ({receipt_id}), a TS template literal (${id}) and a glob (*) give one key.
+// ({order_id}), a TS template literal (${id}) and a glob (*) give one key.
 func NormalizePath(p string) string {
 	p = pathParamRe.ReplaceAllString(p, "{}")
 	for strings.Contains(p, "//") {
@@ -186,13 +186,13 @@ func NormalizePath(p string) string {
 	return p
 }
 
-// EndpointKey is the canonical HttpEndpoint key: "GET /api/v1/receipts/{}".
+// EndpointKey is the canonical HttpEndpoint key: "GET /api/v1/orders/{}".
 func EndpointKey(method, path string) string {
 	return strings.ToUpper(method) + " " + NormalizePath(path)
 }
 
 // Tokens splits an identifier into lowercase words for full-text search:
-// GetByID -> "get by id", store_name -> "store name", OTPRequest -> "otp request".
+// GetByID -> "get by id", merchant_name -> "merchant name", OTPRequest -> "otp request".
 func Tokens(s string) string {
 	var words []string
 	var cur []rune

@@ -527,7 +527,7 @@ func (x *extractor) implements() {
 }
 
 // tests links test functions to what they exercise: direct callees, and symbols
-// named in the test name (TestReceipt_StoreName -> Receipt.StoreName).
+// named in the test name (TestOrder_MerchantName -> Order.MerchantName).
 func (x *extractor) tests() {
 	seen := map[string]bool{}
 	for _, tc := range x.testCalls {

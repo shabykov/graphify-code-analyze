@@ -120,7 +120,7 @@ func IsTestVariant(pkg *packages.Package) bool { return strings.Contains(pkg.ID,
 func IsTestMain(pkg *packages.Package) bool { return strings.HasSuffix(pkg.ID, ".test") }
 
 // Layer maps a repository-relative package path to its architectural layer:
-// internal/usecase/receipt -> usecase, pkg/uuid -> pkg, cmd/api -> cmd.
+// internal/usecase/order -> usecase, pkg/uuid -> pkg, cmd/api -> cmd.
 func Layer(relPkg string) string {
 	segs := strings.Split(relPkg, "/")
 	switch {

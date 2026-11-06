@@ -160,7 +160,7 @@ _PARAM_RE = re.compile(r"\$\{[^}]*\}|\{[^}]*\}|:[A-Za-z_][A-Za-z0-9_]*|\*+")
 
 
 def normalize_path(path: str) -> str:
-    """Replace every path parameter with {} so chi ({id}), OpenAPI ({receipt_id}),
+    """Replace every path parameter with {} so chi ({id}), OpenAPI ({order_id}),
     a TS template literal (${id}) and a Playwright glob (*) give the same key."""
     path = _PARAM_RE.sub("{}", path)
     while "//" in path:
@@ -179,7 +179,7 @@ _TOKEN_RE = re.compile(r"[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|[0-9]+|[^\W_]+
 
 def tokens(identifier: str) -> str:
     """Split an identifier into lowercase words: GetByID -> 'get by id',
-    store_name -> 'store name', OTPRequest -> 'otp request'."""
+    merchant_name -> 'merchant name', OTPRequest -> 'otp request'."""
     return " ".join(m.group(0).lower() for m in _TOKEN_RE.finditer(identifier))
 
 

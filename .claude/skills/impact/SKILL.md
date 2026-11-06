@@ -29,7 +29,7 @@ Name `SERVICE` — the repository where the change is made (from the issue's rep
 From most to least exact:
 
 1. Identifiers in the text — paths, `METHOD /path`, `Type.Method`, field names, `ERROR_CODES`: `graph.py search "<identifier>"` (exact key/name match scores 100).
-2. Words — `graph.py search "<two or three words>"` (full-text over symbol names/tokens/docs, endpoints, schema fields, files). Try English identifiers for a ticket written in another language (`store name` for «название магазина»).
+2. Words — `graph.py search "<two or three words>"` (full-text over symbol names/tokens/docs, endpoints, schema fields, files). Try English identifiers for a ticket written in another language (`merchant name` for «имя продавца»).
 3. Structure — `MATCH (p:Package {repo:$r}) RETURN p.key, p.layer, p.doc`, then `MATCH (f:File)-[:CONTAINS]->(s:Symbol) WHERE f.path STARTS WITH '<dir>' …`.
 
 Read the candidates: `graph.py read "<symbol key>"` or `graph.py read "<source_ref>"`. Keep the scope minimal and list what you deliberately left out.

@@ -1,6 +1,6 @@
 """SERIALIZES: which code struct produces which OpenAPI schema.
 
-A struct matches a schema by name (ReceiptDTO → Receipt) or, failing that, by an
+A struct matches a schema by name (OrderDTO → Order) or, failing that, by an
 identical set of json field names. The edge records the drift in both directions.
 """
 
@@ -51,10 +51,14 @@ def link(all_claims: Claims, repo: str, src: Source) -> Claims:
         for skey, match in candidates[:1]:
             spec_fields = fields_of.get(skey, set())
             code_fields = set(p["json_fields"])
-            c.edge(
-                "SERIALIZES", ("Symbol", sym["key"]), ("Schema", skey),
-                src.props(p["file"], p.get("line_start", 0), match=match,
-                          missing_in_code=sorted(spec_fields - code_fields) or None,
-                          missing_in_spec=sorted(code_fields - spec_fields) or None),
-            )
+            props = src.props(p["file"], p.get("line_start", 0), match=match,
+                              missing_in_code=sorted(spec_fields - code_fields) or None,
+                              missing_in_spec=sorted(code_fields - spec_fields) or None,
+                              common_fields=len(spec_fields & code_fields))
+            # A name match without a single shared field is more likely two unrelated
+            # structs with similar names than contract drift; leave it for a human to judge.
+            if match == "name" and not (spec_fields & code_fields):
+                props["match"] = "name_only"
+                props["confidence"] = 0.5
+            c.edge("SERIALIZES", ("Symbol", sym["key"]), ("Schema", skey), props)
     return c
