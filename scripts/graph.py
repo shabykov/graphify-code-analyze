@@ -6,6 +6,7 @@
     graph.py search "<text>" [--labels Symbol,Field] [-k 20]
     graph.py read "<source_ref | symbol key>" [--context 15]
     graph.py repos                       # indexed repositories
+    graph.py viz "<cypher returning nodes/edges/paths>" [--out file.html] [--open]
 
 All commands take --graph (default: impact), --host, --port.
 """
@@ -190,6 +191,134 @@ def cmd_read(g: Graph, args: argparse.Namespace) -> int:
     return 0
 
 
+LABEL_COLORS = {
+    "Repo": "#1f3a5f", "Component": "#2f5d8a", "Package": "#5b7db1", "File": "#9db4d6", "Symbol": "#f0a830",
+    "HttpEndpoint": "#d64545", "Schema": "#7b4fa6", "Field": "#b690d6", "Unresolved": "#888888", "Meta": "#cccccc",
+    "Table": "#2e8b57", "Column": "#7fc29b", "Adr": "#c27ba0", "Issue": "#e07b39", "UiRoute": "#3c9fb5",
+}
+
+VIZ_TEMPLATE = """<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><title>impact graph</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.9/dist/vis-network.min.js"></script>
+<style>
+ html,body{margin:0;height:100%;font:13px/1.4 -apple-system,Segoe UI,sans-serif;background:#fafafa;color:#222}
+ #net{position:absolute;inset:0 0 0 0}
+ #side{position:absolute;top:0;right:0;width:360px;height:100%;overflow:auto;background:#fff;border-left:1px solid #ddd;padding:12px;box-sizing:border-box}
+ #legend span{display:inline-block;margin:0 8px 6px 0}
+ #legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:middle}
+ pre{white-space:pre-wrap;word-break:break-all;background:#f3f3f3;padding:8px;border-radius:4px}
+ .q{color:#666;font-size:12px}
+</style></head><body>
+<div id="net"></div>
+<div id="side">
+ <div class="q"><b>__COUNTS__</b><br>__QUERY__</div>
+ <div id="legend"></div>
+ <div id="detail">Клик по узлу или ребру — свойства здесь. Колесо — масштаб, перетаскивание — перемещение.</div>
+</div>
+<script>
+const DATA = __DATA__;
+const COLORS = __COLORS__;
+const legend = document.getElementById('legend');
+for (const l of [...new Set(DATA.nodes.map(n => n.label))].sort()) {
+  legend.insertAdjacentHTML('beforeend', `<span><i style="background:${COLORS[l]||'#999'}"></i>${l}</span>`);
+}
+const nodes = new vis.DataSet(DATA.nodes.map(n => ({
+  id: n.id, label: n.short, title: n.key, color: {background: COLORS[n.label]||'#999', border: '#555'},
+  shape: n.label === 'HttpEndpoint' ? 'box' : (n.label === 'Schema' || n.label === 'Field' ? 'diamond' : 'dot'),
+  size: n.label === 'Symbol' ? 10 : 14, font: {size: 11}, data: n
+})));
+const edges = new vis.DataSet(DATA.edges.map(e => ({
+  id: e.id, from: e.from, to: e.to, label: e.type, arrows: 'to', font: {size: 9, align: 'middle', color: '#777'},
+  color: {color: '#bbb', highlight: '#333'}, dashes: e.type === 'CALLS' && e.props.via === 'derived', data: e
+})));
+const net = new vis.Network(document.getElementById('net'), {nodes, edges}, {
+  physics: {solver: 'forceAtlas2Based', stabilization: {iterations: 200}, forceAtlas2Based: {gravitationalConstant: -40, springLength: 90}},
+  interaction: {hover: true, tooltipDelay: 100}, edges: {smooth: {type: 'continuous'}}
+});
+function show(obj, kind) {
+  const props = Object.entries(obj.props || {}).filter(([k]) => k !== 'emb').map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join('\\n');
+  document.getElementById('detail').innerHTML = `<b>${kind}</b> ${obj.label || obj.type}<pre>${props.replace(/</g,'&lt;')}</pre>`;
+}
+net.on('click', p => {
+  if (p.nodes.length) show(nodes.get(p.nodes[0]).data, 'node');
+  else if (p.edges.length) show(edges.get(p.edges[0]).data, 'edge');
+});
+</script></body></html>
+"""
+
+
+def _short_name(label: str, props: dict) -> str:
+    key = str(props.get("key", ""))
+    if label == "HttpEndpoint":
+        return key
+    if label in ("Symbol", "Field", "Schema", "Package", "File", "Component"):
+        name = props.get("name") or key
+        return str(name)[-40:]
+    return (props.get("name") or key)[:40]
+
+
+def _collect(g: Graph, rows: list[list[Any]]) -> tuple[dict[int, dict], dict[int, dict]]:
+    """Nodes and edges found anywhere in the result rows (entities, paths, lists)."""
+    nodes: dict[int, dict] = {}
+    edges: dict[int, dict] = {}
+
+    def add_node(n: Any) -> None:
+        label = n.labels[0] if n.labels else "?"
+        nodes[n.id] = {"id": n.id, "label": label, "key": n.properties.get("key", ""), "short": _short_name(label, n.properties), "props": n.properties}
+
+    def add_edge(e: Any) -> None:
+        edges[e.id] = {"id": e.id, "from": e.src_node, "to": e.dest_node, "type": e.relation, "props": e.properties}
+
+    def visit(v: Any) -> None:
+        if hasattr(v, "labels") and hasattr(v, "properties"):
+            add_node(v)
+        elif hasattr(v, "relation"):
+            add_edge(v)
+        elif hasattr(v, "nodes") and hasattr(v, "edges"):
+            for n in v.nodes():
+                add_node(n)
+            for e in v.edges():
+                add_edge(e)
+        elif isinstance(v, list):
+            for x in v:
+                visit(x)
+
+    for row in rows:
+        for v in row:
+            visit(v)
+    missing = sorted({e["from"] for e in edges.values()} | {e["to"] for e in edges.values()} - set(nodes))
+    if missing:
+        res = g.query("MATCH (n) WHERE id(n) IN $ids RETURN n", {"ids": missing})
+        for (n,) in res.result_set:
+            add_node(n)
+    return nodes, edges
+
+
+def cmd_viz(g: Graph, args: argparse.Namespace) -> int:
+    res = g.query(args.cypher, parse_params(args.param))
+    nodes, edges = _collect(g, res.result_set or [])
+    if not nodes:
+        print("the query returned no nodes; RETURN the entities (n, r, p), not their properties", file=sys.stderr)
+        return 1
+    if len(nodes) > args.max_nodes:
+        print(f"{len(nodes)} nodes is more than --max-nodes {args.max_nodes}; add LIMIT or narrow the MATCH", file=sys.stderr)
+        return 1
+    html = (VIZ_TEMPLATE
+            .replace("__DATA__", json.dumps({"nodes": list(nodes.values()), "edges": list(edges.values())}, ensure_ascii=False, default=str))
+            .replace("__COLORS__", json.dumps(LABEL_COLORS))
+            .replace("__COUNTS__", f"{len(nodes)} узлов, {len(edges)} рёбер · граф {g.name}")
+            .replace("__QUERY__", args.cypher.replace("<", "&lt;")))
+    out = os.path.abspath(args.out)
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    with open(out, "w", encoding="utf-8") as f:
+        f.write(html)
+    print(f"{len(nodes)} nodes, {len(edges)} edges -> {out}")
+    if args.open:
+        import webbrowser
+        webbrowser.open("file://" + out)
+    return 0
+
+
 def cmd_repos(g: Graph, args: argparse.Namespace) -> int:
     res = g.query("MATCH (r:Repo) OPTIONAL MATCH (r)-[:CONTAINS]->(c:Component) RETURN r.key, r.lang, r.indexed_commit, r.indexed_at, r.github, r.root, collect(c.key) ORDER BY r.key")
     if not res.result_set:
@@ -222,9 +351,15 @@ def main() -> int:
     r.add_argument("ref")
     r.add_argument("--context", type=int, default=15)
     sub.add_parser("repos", help="indexed repositories")
+    v = sub.add_parser("viz", help="render the nodes/edges a query returns as an interactive HTML page")
+    v.add_argument("cypher")
+    v.add_argument("-p", "--param", action="append", help="k=v (v parsed as JSON when possible)")
+    v.add_argument("--out", default=os.path.join(".graphify", "viz.html"))
+    v.add_argument("--max-nodes", type=int, default=1500)
+    v.add_argument("--open", action="store_true", help="open the page in the default browser")
     args = ap.parse_args()
     g = Graph(args.graph, args.host, args.port)
-    return {"schema": cmd_schema, "query": cmd_query, "search": cmd_search, "read": cmd_read, "repos": cmd_repos}[args.cmd](g, args)
+    return {"schema": cmd_schema, "query": cmd_query, "search": cmd_search, "read": cmd_read, "repos": cmd_repos, "viz": cmd_viz}[args.cmd](g, args)
 
 
 if __name__ == "__main__":

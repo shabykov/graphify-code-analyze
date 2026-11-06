@@ -70,7 +70,7 @@ def main() -> int:
     ap.add_argument("--graph", default="impact", help="FalkorDB graph name (default: impact)")
     ap.add_argument("--host", default="localhost")
     ap.add_argument("--port", type=int, default=6379)
-    ap.add_argument("--reset", action="store_true", help="delete the whole graph before loading")
+    ap.add_argument("--reset", action="store_true", help="empty the whole graph before loading (in place, so the browser UI keeps working)")
     ap.add_argument("--replace", action="store_true", help="remove this repository's previous claims before loading (default when the repo is already in the graph)")
     ap.add_argument("--no-load", action="store_true", help="extract only; do not touch FalkorDB")
     ap.add_argument("--out", help="also write the claims JSON here")
@@ -123,8 +123,8 @@ def main() -> int:
 
     g = Graph(args.graph, args.host, args.port, verbose=args.verbose)
     if args.reset:
-        g.delete()
-        log(f"graph {args.graph} deleted")
+        g.clear()
+        log(f"graph {args.graph} cleared")
     g.ensure_schema()
     already = g.exists() and bool(g.query("MATCH (r:Repo {key: $k}) RETURN count(r)", {"k": name}).result_set[0][0])
     if already or args.replace:

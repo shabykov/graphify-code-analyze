@@ -42,6 +42,13 @@ class Graph:
         if self.exists():
             self.g.delete()
 
+    def clear(self) -> None:
+        """Empty the graph in place. Dropping the key resets FalkorDB's graph version,
+        and the browser UI keeps a cached version that then stops matching
+        ("ERR invalid graph version" until its process restarts)."""
+        if self.exists():
+            self.g.query("MATCH (n) DETACH DELETE n")
+
     def _try(self, cypher: str) -> bool:
         try:
             self.g.query(cypher)
