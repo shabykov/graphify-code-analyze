@@ -1,0 +1,21 @@
+services:
+  falkordb:
+    image: falkordb/falkordb:latest
+    container_name: falkordb
+    ports:
+      - "6379:6379"
+      - "3001:3000"
+    environment:
+      - REDIS_ARGS=--appendonly yes
+      - FALKORDB_ARGS=THREAD_COUNT 4
+    volumes:
+      - falkordb_data:/var/lib/falkordb/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  falkordb_data:
