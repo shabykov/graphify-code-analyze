@@ -16,7 +16,7 @@ A "ticket → code → cross-service impact" graph. Extractors load repositories
 - `.claude/skills/graphify/`, `.claude/skills/impact/` — `/graphify <repo> [graph]` indexes a repository; `/impact <#issue | repo#issue | adr.md | text>` runs the analysis.
 - `.venv/` — Python 3.14 with `falkordb`, `pyyaml`. Always run Python as `.venv/bin/python`.
 
-Not extracted yet (`graph.py schema` marks them "ещё не извлекается"): SQL → `Table`/`Column`, `CacheKey`, `Channel`/`Event`, `SseEvent`, `ExternalSystem`/`ConfigKey`, `UiRoute`, a TS/Svelte crawler (`CALLS_ENDPOINT`, `MIRRORS`, `USES_FIELD`, `MOCKS`), docs/ADR/issue extractors (`Adr`, `Issue`, `MENTIONS`, `CITES`), `REACHES`, embeddings/`Concept`. Repositories without `go.mod` currently get L0 and OpenAPI only.
+Not extracted yet (`implemented: False` in `scripts/graphify/meta.py`, shown as "ещё не извлекается" by `graph.py schema` — that list is authoritative): SQL → `Table`/`Column`/`DEFINES`/`READS`/`WRITES`, `CacheKey`, `Channel`/`Event`/`PRODUCES`/`CONSUMES`, `SseEvent`/`EMITS`/`LISTENS`, `ExternalSystem`/`ConfigKey`, `UiRoute`/`NAVIGATES_TO`, a TS/Svelte crawler (`CALLS_ENDPOINT`, `MIRRORS`, `USES_FIELD`, `MOCKS`, `VISITS`), docs/ADR/issue extractors (`Adr`, `Issue`, `PullRequest`, `DocChunk`, `MENTIONS`, `CITES`, `DEPENDS_ON`, `SUPERSEDES`, `CHUNK_OF`), `ALIAS_OF`, `REACHES`, embeddings/`Concept`/`ABOUT`. Repositories without `go.mod` currently get L0 and OpenAPI only.
 
 Ask the user which repos to index and where they are. Index contract owners (APIs) before their clients: client extractors merge into the seams the owner created. Keep real project names out of the docs; examples use `orders-api` / `orders-web`.
 
@@ -33,7 +33,7 @@ docker compose up -d                                   # FalkorDB: redis on :637
 .venv/bin/python scripts/graph.py schema
 .venv/bin/python scripts/graph.py query "MATCH (e:HttpEndpoint) RETURN e.key LIMIT 5"
 .venv/bin/python scripts/graph.py search "merchant name"
-.venv/bin/python scripts/graph.py read "<source_ref or Symbol key>"
+.venv/bin/python scripts/graph.py read "<source_ref or Symbol/File key>"
 
 cd crawler-go && GOTOOLCHAIN=auto go vet ./... && go build -o ../.graphify/crawler-go .   # manual crawler build
 ../.graphify/crawler-go -repo <repo> -v -out /dev/null                                     # crawler alone, stats on stderr
@@ -46,7 +46,7 @@ A read query against a missing graph creates an empty one, so a typo in the grap
 ## Design rules (details in graph-schema-v2.md)
 
 - One graph for all repos: FalkorDB has no cross-graph queries.
-- Every node has a `key` (stable, no commit sha) and `repo`; every edge has `claim_id`, `source_ref` (`<repo>@<sha>:<path>:L<n>`), `extracted_by`, `confidence`, `repo`. One edge = one piece of evidence.
+- Every node has a `key` (stable, no commit sha) and `repo` (seam nodes: `owner_repo`); every edge has `claim_id`, `source_ref` (`<repo>@<sha>:<path>:L<n>`), `extracted_by`, `confidence`, `repo`. One edge = one piece of evidence.
 - Seam nodes (L2: `HttpEndpoint`, `Schema`, `Field`, `Table`, …) get the same canonical key from every extractor, so `MERGE` from different repos lands on one node. `HttpEndpoint` key: `METHOD /path` with every parameter replaced by `{}`.
 - Load order: `MERGE` nodes by `key` first, then `MERGE` edges by `claim_id` and `SET` the rest. Never `MERGE` a whole `(a)-[r]->(b)` pattern — FalkorDB duplicates the nodes when the edge is missing.
 - Create range indexes and uniqueness constraints before loading; the plan cache keeps plans built before an index existed.
