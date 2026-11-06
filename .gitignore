@@ -222,3 +222,6 @@ __marimo__/
 # Project
 .graphify/
 .idea/
+
+# crawler-ts
+crawler-ts/node_modules/

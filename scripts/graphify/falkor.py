@@ -134,8 +134,21 @@ class Graph:
     def derive(self) -> dict[str, int]:
         """Edges computed from the loaded graph: endpoint defaults and calls through interfaces."""
         out: dict[str, int] = {}
-        self.g.query("MATCH (e:HttpEndpoint) WHERE e.path IS NULL SET e.path = e.path_code")
-        self.g.query("MATCH (e:HttpEndpoint) SET e.in_spec = coalesce(e.in_spec, false), e.in_code = coalesce(e.in_code, false)")
+        # Playwright mocks match a URL regardless of method: expand each "ANY <path>"
+        # placeholder to the real endpoints with that path (or path prefix), then drop it.
+        res = self.g.query(
+            "MATCH (t:Symbol)-[m:MOCKS]->(p:HttpEndpoint {method:'ANY'}) "
+            "MATCH (e:HttpEndpoint) WHERE e.method <> 'ANY' AND "
+            "(e.path_pattern = p.path_pattern OR (coalesce(m.prefix, false) AND e.path_pattern STARTS WITH p.path_pattern + '/')) "
+            "MERGE (t)-[d:MOCKS {claim_id: m.claim_id + ':' + e.key}]->(e) "
+            "SET d.repo = m.repo, d.commit = m.commit, d.source_ref = m.source_ref, d.line = m.line, d.extracted_by = m.extracted_by, "
+            "d.confidence = m.confidence, d.pattern = m.pattern, d.derived = true RETURN count(d)"
+        )
+        out["MOCKS expanded"] = int(res.result_set[0][0]) if res.result_set else 0
+        res = self.g.query("MATCH (p:HttpEndpoint {method:'ANY'}) DETACH DELETE p RETURN count(p)")
+        out["MOCKS placeholders removed"] = int(res.result_set[0][0]) if res.result_set else 0
+        self.g.query("MATCH (e:HttpEndpoint) WHERE e.path IS NULL SET e.path = coalesce(e.path_code, e.path_pattern)")
+        self.g.query("MATCH (e:HttpEndpoint) SET e.in_spec = coalesce(e.in_spec, false), e.in_code = coalesce(e.in_code, false), e.in_client = coalesce(e.in_client, false)")
         res = self.g.query(
             "MATCH (a:Symbol)-[c:CALLS {via:'interface'}]->(im:Symbol {kind:'interface_method'})<-[:IMPLEMENTS]-(impl:Symbol) "
             "WHERE coalesce(impl.is_mock, false) = false AND coalesce(impl.test_file, false) = false AND a.key <> impl.key "

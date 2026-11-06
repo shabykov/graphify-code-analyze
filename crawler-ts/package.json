@@ -1,0 +1,11 @@
+{
+  "name": "crawler-ts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Analyses a TypeScript / SvelteKit repository and prints claims JSON for scripts/indexer.py",
+  "type": "module",
+  "bin": { "crawler-ts": "./index.mjs" },
+  "dependencies": {
+    "typescript": "^5.6.0"
+  }
+}

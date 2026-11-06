@@ -1,6 +1,9 @@
 services:
   falkordb:
-    image: falkordb/falkordb:latest
+    # Pinned server + patched browser client; see docker/falkordb/Dockerfile.
+    # Start with: docker compose up -d --build
+    build: docker/falkordb
+    image: graphify/falkordb:6.0.4-browserfix
     container_name: falkordb
     ports:
       - "6379:6379"

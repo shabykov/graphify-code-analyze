@@ -76,7 +76,12 @@ def classify(rel: str) -> tuple[str, str]:
     return "other", ext.lstrip(".") or "none"
 
 
-def extract(root: str, name: str, src: Source) -> Claims:
+TS_EXTS = {".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".svelte"}
+
+
+def extract(root: str, name: str, src: Source, skip_exts: set[str] | None = None) -> Claims:
+    """skip_exts: file extensions a language crawler owns (it creates those File nodes itself)."""
+    skip_exts = {".go"} | (skip_exts or set())
     c = Claims()
     root = os.path.abspath(root)
     has_go = os.path.exists(os.path.join(root, "go.mod"))
@@ -141,7 +146,7 @@ def extract(root: str, name: str, src: Source) -> Claims:
             full = os.path.join(dirpath, fn)
             rel = os.path.relpath(full, root).replace(os.sep, "/")
             ext = os.path.splitext(fn)[1].lower()
-            if ext in SKIP_EXT or fn.lower() in SKIP_EXT or ext == ".go":
+            if ext in SKIP_EXT or fn.lower() in SKIP_EXT or ext in skip_exts:
                 continue
             try:
                 size = os.path.getsize(full)
